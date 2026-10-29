@@ -1,0 +1,6 @@
+File,Sheet,Issue,Severity,Action
+E-WASTE VALUE.xlsx,E-WASTE INDIA,"CRITICAL: 2016-17 value (23,330.3 T) is e-waste collected/processed, NOT generated",HIGH,Exclude from generation dataset
+E-WASTE VALUE.xlsx,STATE WISE E-WASTE COLLECTION,"Contains COLLECTION data, not generation data",INFO,Not usable for generation forecasting; may serve as context
+E-WASTE VALUE.xlsx,STATE E-WASTE GENERATION(2018,Dirty data: non-breaking spaces in numeric values; ambiguous years; incomplete coverage,MEDIUM,Cannot be used directly for national forecasting
+E-WASTE VALUE.xlsx,STATE WISE WASTE GENERATION2023,"Likely SOLID WASTE (TPD units), not E-waste; column lacks e-waste specifier",HIGH,Exclude from e-waste forecasting; verify source
+RS_Session_266_AU_2384_A.csv,N/A,"FY 2023-24 value (1,751,236) conflicts with Master Data PIB value (1,254,286.55)",CRITICAL,Investigate source; different Rules framework or definition may explain gap

@@ -1,0 +1,12 @@
+Column,Type,Description,Unit
+financial_year,string,Indian financial year (e.g. 2017-18 = Apr 2017 to Mar 2018),N/A
+fy_start,integer,Calendar year in which the financial year starts,year
+year_index,integer,Ordinal time index (1 = first observation),ordinal
+years_since_start,integer,Years elapsed since first observation (0-based),years
+ewaste_generated_tonnes,float,"E-waste generated in India, in tonnes (metric tonnes)",tonnes
+ewaste_generated_kt,float,"E-waste generated in India, in kilotonnes (1 kt = 1000 tonnes)",kt
+framework_flag,integer (0/1),"Binary: 0 = 2016 Rules framework, 1 = 2022 Rules framework",binary
+reporting_framework,string,Name of the regulatory framework under which the figure was reported,N/A
+comparability_group,string,Comparability group identifier for time-series continuity,N/A
+source_id,string,Reference to source publication (see source_register.csv),N/A
+record_id,string,Unique record identifier,N/A

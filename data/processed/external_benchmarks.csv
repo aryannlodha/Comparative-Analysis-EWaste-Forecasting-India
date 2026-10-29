@@ -1,0 +1,5 @@
+benchmark_id,year,period_basis,value_tonnes,value_kt,data_type,source,note
+B001,2022,Calendar year,4137000,4137,International estimate,Global E-waste Statistics Partnership,NOT comparable to CPCB FY series
+B002,2020,Calendar year,2760000,2760,NITI Aayog cited estimate,NITI Aayog report,Secondary estimate; methodology differs from CPCB
+B003,2024,Calendar year,6190000,6190,NITI Aayog cited estimate,NITI Aayog report,"Estimate, NOT observed data"
+B004,2030,Calendar year,14000000,14000,Projection,NITI Aayog 2030 projection,NEVER use as observed training data

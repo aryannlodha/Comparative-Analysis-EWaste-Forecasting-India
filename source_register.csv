@@ -1,0 +1,7 @@
+Source_ID,Publication,Type,Coverage,Variable,Unit,Framework,URL
+S01,PIB/MoEFCC Generation of E-waste (27 Jul 2023),Official government release,FY 2017-18 to FY 2021-22,E-waste generated,Tonnes,E-Waste (Management) Rules 2016; 21 EEE types,https://www.pib.gov.in/PressReleasePage.aspx?PRID=1943201
+S02,PIB/MoEFCC E-waste processing (24 Jul 2025),Official government release,FY 2023-24 to FY 2024-25,E-waste generated,Metric Tonnes,E-Waste (Management) Rules 2022,https://www.pib.gov.in/PressReleasePage.aspx?PRID=2147876
+S03,Nandi & Dhar - Zenodo dataset (2025),Secondary/compiled research,2016-2023,Mixed (generation+collection),Tonnes,Compiled from multiple official sources,https://zenodo.org/records/15506723
+S04,Global E-waste Statistics Partnership - India 2022,International benchmark,CY 2022,E-waste generated,Kilotonnes,International methodology (differs from CPCB),https://globalewaste.org/statistics/country/india/2022/
+S_RS,"Rajya Sabha Session 266, AU 2384 A",Parliamentary record,FY 2019-20 to FY 2023-24,E-waste generated,Metric Ton,Not explicitly stated; likely 2016 Rules for older years,Parliamentary session record
+S_ParliVerify,Parliamentary source FY 2022-23 verification,Official parliamentary source,FY 2022-23,E-waste generated,Metric Tonnes,"Confirmed 1,609,117 MT from official parliamentary answer",sansad.in parliamentary records

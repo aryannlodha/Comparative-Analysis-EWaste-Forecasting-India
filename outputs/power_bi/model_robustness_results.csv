@@ -1,0 +1,19 @@
+experiment,model,config,train_n,test_n,MAE_tonnes,RMSE_tonnes,MAPE_pct
+A_limited_training,Linear Regression,Full (n=6),6,2,686221.0,687005.0,51.8
+A_limited_training,Linear Regression,Short (n=5),5,3,612282.0,683017.0,45.3
+A_limited_training,Linear Regression,Minimal (n=4),4,4,408511.0,510210.0,30.1
+B_missing_obs,Linear Regression,Drop 2017-18,5,2,734167.0,735326.0,55.4
+B_missing_obs,Linear Regression,Drop 2018-19,5,2,663696.0,664258.0,50.1
+B_missing_obs,Linear Regression,Drop 2019-20,5,2,689779.0,690513.0,52.0
+B_missing_obs,Linear Regression,Drop 2020-21,5,2,663367.0,664121.0,50.0
+B_missing_obs,Linear Regression,Drop 2021-22,5,2,605243.0,605801.0,45.7
+B_missing_obs,Linear Regression,Drop 2022-23,5,2,824649.0,825943.0,62.2
+C_noise,Linear Regression,5% Gaussian noise,6,2,691482.0,94487.0,57.1
+C_noise,Linear Regression,10% Gaussian noise,6,2,696742.0,188974.0,62.5
+C_noise,Linear Regression,20% Gaussian noise,6,2,730063.0,331776.0,73.2
+D_uncertainty,Gaussian Process,FY 2025-26,8,0,1163634.0,238196.0,
+D_uncertainty,Gaussian Process,FY 2026-27,8,0,952273.0,322260.0,
+D_uncertainty,Gaussian Process,FY 2027-28,8,0,734458.0,427747.0,
+D_uncertainty,Gaussian Process,FY 2028-29,8,0,532735.0,540366.0,
+D_uncertainty,Gaussian Process,FY 2029-30,8,0,362104.0,647659.0,
+D_uncertainty,Gaussian Process,FY 2030-31,8,0,229283.0,740679.0,
