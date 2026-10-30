@@ -1,0 +1,8 @@
+Model,Eval_Method,N_Test_Obs,MAE_tonnes,RMSE_tonnes,MAPE_pct,sMAPE_pct
+Naive Baseline,Rolling-Origin (4 windows),4,190280.0,229924.0,13.7,13.3
+"ARIMA(1,1,0)",Rolling-Origin (4 windows),4,214388.0,237854.0,15.5,15.2
+Gaussian Process,Rolling-Origin (4 windows),4,236555.0,435561.0,16.8,23.9
+Linear Regression (FW),Rolling-Origin (4 windows),4,251994.0,345223.0,18.7,15.9
+Linear Regression,Rolling-Origin (4 windows),4,322003.0,384669.0,23.7,20.2
+Random Forest,Rolling-Origin (4 windows),4,323631.0,389581.0,21.2,24.2
+XGBoost,Rolling-Origin (4 windows),4,361350.0,429576.0,23.6,27.3

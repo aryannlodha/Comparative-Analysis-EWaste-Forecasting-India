@@ -444,10 +444,12 @@ df_results = df_results.sort_values('MAE_tonnes')
 print(df_results.to_string(index=False))
 
 df_results.to_csv(os.path.join(PBI_DIR, 'model_metrics.csv'), index=False)
+df_results.to_csv(os.path.join(RESULTS_DIR, 'model_metrics.csv'), index=False)
 print(f"\nSaved: model_metrics.csv")
 
 df_preds = pd.DataFrame(all_predictions)
 df_preds.to_csv(os.path.join(PBI_DIR, 'model_predictions.csv'), index=False)
+df_preds.to_csv(os.path.join(RESULTS_DIR, 'model_predictions.csv'), index=False)
 print(f"Saved: model_predictions.csv")
 
 print("\n  INTERPRETATION:")
@@ -595,6 +597,7 @@ for i, fy in enumerate(future_fys):
 
 df_robust = pd.DataFrame(robustness_results)
 df_robust.to_csv(os.path.join(PBI_DIR, 'model_robustness_results.csv'), index=False)
+df_robust.to_csv(os.path.join(RESULTS_DIR, 'model_robustness_results.csv'), index=False)
 print(f"\nSaved: model_robustness_results.csv")
 
 # ============================================================================
@@ -689,6 +692,7 @@ for i, row in df.iterrows():
 
 df_forecasts = pd.DataFrame(forecast_records)
 df_forecasts.to_csv(os.path.join(PBI_DIR, 'forecast_results.csv'), index=False)
+df_forecasts.to_csv(os.path.join(RESULTS_DIR, 'forecast_results.csv'), index=False)
 print(f"\nSaved: forecast_results.csv")
 
 print("\n  IMPORTANT CAVEATS:")
