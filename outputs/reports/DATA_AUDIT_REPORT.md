@@ -3,7 +3,6 @@
 **Project Title:** Comparative Analysis of Predictive Models for E-Waste Generation Forecasting in India  
 **Subject:** Enterprise Information Systems (EIS)  
 **Deliverable:** Phase 1 Formal Data Audit Report  
-**Author:** EIS Project Team  
 
 ---
 
