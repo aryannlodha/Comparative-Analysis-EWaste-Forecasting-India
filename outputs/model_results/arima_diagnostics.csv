@@ -1,0 +1,5 @@
+context,order,trend,event,detail
+order_search_k4,"(1, 1, 1)",n,CONVERGENCE_WARNING,Maximum Likelihood optimization failed to converge. Check mle_retvals
+order_search_k5,"(1, 1, 1)",n,CONVERGENCE_WARNING,Maximum Likelihood optimization failed to converge. Check mle_retvals
+order_search_k6,"(1, 1, 1)",n,CONVERGENCE_WARNING,Maximum Likelihood optimization failed to converge. Check mle_retvals
+order_search_k6,"(1, 1, 1)",t,CONVERGENCE_WARNING,Maximum Likelihood optimization failed to converge. Check mle_retvals

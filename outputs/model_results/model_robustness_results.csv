@@ -11,9 +11,9 @@ B_missing_obs,Linear Regression,Drop 2022-23,5,2,824649.0,825943.0,62.2,,,,,,
 C_noise,Linear Regression,5% Gaussian noise,6,2,,,,20.0,691482.0,94487.0,52.2,,
 C_noise,Linear Regression,10% Gaussian noise,6,2,,,,20.0,696742.0,188974.0,52.5,,
 C_noise,Linear Regression,20% Gaussian noise,6,2,,,,20.0,730063.0,331776.0,55.0,,
-D_uncertainty,Gaussian Process,FY 2025-26,8,0,,,,,,,,1163634.0,238196.0
-D_uncertainty,Gaussian Process,FY 2026-27,8,0,,,,,,,,952273.0,322260.0
-D_uncertainty,Gaussian Process,FY 2027-28,8,0,,,,,,,,734458.0,427747.0
-D_uncertainty,Gaussian Process,FY 2028-29,8,0,,,,,,,,532735.0,540366.0
-D_uncertainty,Gaussian Process,FY 2029-30,8,0,,,,,,,,362104.0,647659.0
-D_uncertainty,Gaussian Process,FY 2030-31,8,0,,,,,,,,229283.0,740679.0
+D_uncertainty,Gaussian Process,FY 2025-26,8,0,,,,,,,,1400516.0,211385.0
+D_uncertainty,Gaussian Process,FY 2026-27,8,0,,,,,,,,1418246.0,351029.0
+D_uncertainty,Gaussian Process,FY 2027-28,8,0,,,,,,,,1344182.0,422264.0
+D_uncertainty,Gaussian Process,FY 2028-29,8,0,,,,,,,,1252429.0,425461.0
+D_uncertainty,Gaussian Process,FY 2029-30,8,0,,,,,,,,1195686.0,412700.0
+D_uncertainty,Gaussian Process,FY 2030-31,8,0,,,,,,,,1172537.0,405466.0

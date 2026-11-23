@@ -42,3 +42,46 @@ class PublishedResultsTest(unittest.TestCase):
             with self.subTest(file=name):
                 self.assertEqual(read_rows("outputs/model_results/" + name),
                                  read_rows("outputs/power_bi/" + name))
+
+
+class ForecastSanityTest(unittest.TestCase):
+    """Guards for the issues found in review: impossible forecasts, silent fallbacks, overclaimed ranking."""
+
+    def test_gp_intervals_are_positive_and_ordered(self):
+        gp = [r for r in read_rows("outputs/model_results/forecast_results.csv")
+              if r["model"] == "Gaussian Process"]
+        self.assertEqual(len(gp), 6)
+        for row in gp:
+            low, mid, high = (float(row["gp_95ci_low"]), float(row["forecast_tonnes"]),
+                              float(row["gp_95ci_high"]))
+            self.assertGreater(low, 0, "e-waste tonnage cannot be negative")
+            self.assertLess(low, mid)
+            self.assertLess(mid, high)
+
+    def test_all_forecasts_are_positive(self):
+        for row in read_rows("outputs/model_results/forecast_results.csv"):
+            self.assertGreater(float(row["forecast_tonnes"]), 0)
+
+    def test_scenario_band_is_ordered_and_excludes_trees(self):
+        rows = read_rows("outputs/model_results/scenario_band.csv")
+        self.assertEqual(len(rows), 6)
+        for row in rows:
+            self.assertLessEqual(float(row["low_tonnes"]), float(row["base_tonnes"]))
+            self.assertLessEqual(float(row["base_tonnes"]), float(row["high_tonnes"]))
+            self.assertNotIn("Random Forest", row["models_in_band"])
+            self.assertNotIn("XGBoost", row["models_in_band"])
+
+    def test_framework_flag_identified_only_in_last_fold(self):
+        rows = read_rows("outputs/model_results/framework_flag_diagnostic.csv")
+        identified = [r["train_size"] for r in rows if r["flag_identified"] == "True"]
+        self.assertEqual(identified, ["7"])
+
+    def test_fold_sensitivity_reports_rank_span_for_every_model(self):
+        rows = read_rows("outputs/model_results/fold_sensitivity.csv")
+        self.assertEqual(len(rows), 7)
+        for row in rows:
+            self.assertLessEqual(int(row["best_rank"]), int(row["worst_rank"]))
+
+    def test_arima_diagnostics_file_exists(self):
+        # Fallbacks/convergence problems must be recorded, never silent.
+        self.assertTrue((ROOT / "outputs/model_results/arima_diagnostics.csv").exists())

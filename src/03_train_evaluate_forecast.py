@@ -28,6 +28,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 import xgboost as xgb
 
 warnings.filterwarnings('ignore')
@@ -256,44 +257,97 @@ class XGBoostModel:
 
 
 class GaussianProcessModel:
-    """Gaussian Process Regression with RBF kernel"""
+    """Gaussian Process Regression with RBF kernel, fitted in standardized log space.
+
+    Modelling log(tonnes) keeps every prediction (and interval bound) strictly
+    positive, and standardizing the target lets the kernel hyperparameters live on
+    an O(1) scale instead of the old 1e12 / 1e8 magnitudes needed for raw tonnes.
+    The returned point forecast is the median (exp of the log-space mean), and
+    intervals are exp(log-mean +/- z * log-std).
+    """
     def __init__(self, use_framework_flag=False):
-        kernel = ConstantKernel(1e12, (1e8, 1e16)) * RBF(2.0, (0.5, 10.0)) + WhiteKernel(1e8, (1e4, 1e12))
+        kernel = ConstantKernel(1.0, (1e-2, 1e2)) * RBF(2.0, (0.5, 10.0)) + WhiteKernel(0.1, (1e-4, 1.0))
         self.model = GaussianProcessRegressor(
             kernel=kernel, n_restarts_optimizer=10, random_state=42, alpha=0
         )
         self.use_fw = use_framework_flag
         self.name = "Gaussian Process"
+        self._mu = 0.0
+        self._sd = 1.0
 
     def fit(self, X, y, fw=None):
         if self.use_fw and fw is not None:
             X_train = np.column_stack([X, fw])
         else:
             X_train = X.reshape(-1, 1) if X.ndim == 1 else X
-        self.model.fit(X_train, y)
+        log_y = np.log(np.asarray(y, dtype=float))
+        self._mu = log_y.mean()
+        self._sd = log_y.std() or 1.0
+        self.model.fit(X_train, (log_y - self._mu) / self._sd)
+
+    def _design(self, X, fw=None):
+        if self.use_fw and fw is not None:
+            return np.column_stack([X, fw])
+        return X.reshape(-1, 1) if X.ndim == 1 else X
 
     def predict(self, X, fw=None, return_std=False):
-        if self.use_fw and fw is not None:
-            X_pred = np.column_stack([X, fw])
-        else:
-            X_pred = X.reshape(-1, 1) if X.ndim == 1 else X
+        """Median forecast in tonnes. With return_std=True also returns the
+        log-space standard deviation (a unitless multiplicative-uncertainty scale)."""
+        z_mean, z_std = self.model.predict(self._design(X, fw), return_std=True)
+        median = np.exp(z_mean * self._sd + self._mu)
         if return_std:
-            return self.model.predict(X_pred, return_std=True)
-        return self.model.predict(X_pred)
+            return median, z_std * self._sd
+        return median
+
+    def predict_interval(self, X, fw=None, z=1.96):
+        """(median, low, high) in tonnes; bounds are always > 0."""
+        median, log_std = self.predict(X, fw=fw, return_std=True)
+        return median, median * np.exp(-z * log_std), median * np.exp(z * log_std)
 
     def description(self):
         return {
             'name': self.name,
-            'how_it_works': 'Bayesian nonparametric regression with RBF kernel; '
-                           'provides mean prediction and uncertainty (standard deviation)',
+            'how_it_works': 'Bayesian nonparametric regression with RBF kernel on standardized '
+                           'log(tonnes); median forecast plus multiplicative (log-normal) intervals',
             'why_included': 'Naturally provides prediction uncertainty estimates',
-            'assumptions': 'Smooth underlying function; Gaussian noise',
+            'assumptions': 'Smooth underlying function of log-tonnes; Gaussian noise in log space',
             'limitations': 'Small dataset means wide uncertainty bands; '
                           'kernel hyperparameters may be poorly identified',
             'input_variables': 'year_index' + (', framework_flag' if self.use_fw else ''),
             'training_method': 'Marginal likelihood optimization (seed=42)',
             'validation_method': 'Chronological holdout'
         }
+
+
+ARIMA_DIAGNOSTICS = []  # every fallback / convergence problem is recorded here and saved
+
+
+def arima_forecast(y_train, steps, order=(1, 1, 0), trend='n', context=''):
+    """Fit ARIMA and forecast `steps` ahead.
+
+    Failures are never silent: if the fit raises or returns a non-finite forecast we
+    fall back to the naive last value, print a loud WARNING, and record the event in
+    ARIMA_DIAGNOSTICS (saved to outputs/model_results/arima_diagnostics.csv).
+    Convergence warnings are recorded too, even though the forecast is still used.
+    `trend='t'` adds a drift term (meaningful for d=1).
+    """
+    y_train = np.asarray(y_train, dtype=float)
+    event = {'context': context, 'order': str(order), 'trend': trend}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        try:
+            fc = np.asarray(ARIMA(y_train, order=order, trend=trend).fit().forecast(steps=steps), dtype=float)
+            if not np.all(np.isfinite(fc)):
+                raise ValueError('non-finite forecast')
+        except Exception as e:
+            fc = np.full(steps, y_train[-1])
+            ARIMA_DIAGNOSTICS.append({**event, 'event': 'FALLBACK_TO_NAIVE', 'detail': str(e)[:200]})
+            print(f"  !!! WARNING: ARIMA{order} trend='{trend}' [{context}] FAILED ({e}); using naive fallback")
+    for w in caught:
+        if issubclass(w.category, ConvergenceWarning):
+            ARIMA_DIAGNOSTICS.append({**event, 'event': 'CONVERGENCE_WARNING', 'detail': str(w.message)[:200]})
+            print(f"  !!! WARNING: ARIMA{order} trend='{trend}' [{context}] convergence warning")
+    return fc
 
 
 # ============================================================================
@@ -388,13 +442,7 @@ y_preds_arima = []
 for k in range(min_train, n):
     y_tr = y_all[:k]
     y_te = y_all[k]
-    try:
-        arima = ARIMA(y_tr, order=(1, 1, 0))
-        fitted = arima.fit()
-        pred = fitted.forecast(steps=1)[0]
-    except Exception as e:
-        print(f"  Origin {k}: ARIMA failed — {e}")
-        pred = y_tr[-1]  # fallback to naive
+    pred = arima_forecast(y_tr, 1, order=(1, 1, 0), context=f'rolling_origin_k{k}')[0]
 
     y_trues_arima.append(y_te)
     y_preds_arima.append(pred)
@@ -455,9 +503,79 @@ print(f"Saved: model_predictions.csv")
 print("\n  INTERPRETATION:")
 print("  - Lower MAE/RMSE = better prediction accuracy (in tonnes)")
 print("  - Lower MAPE/sMAPE = better percentage accuracy")
-print("  - With only 4 test windows, rankings are UNSTABLE")
-print("  - Models that handle the methodology break better will rank higher")
+print("  - With only 4 test windows, rankings are UNSTABLE (see fold_sensitivity.csv)")
+print("  - The methodology break falls inside the backtest (fold 3 targets FY 2023-24)")
 print("  - Tree-based models (RF, XGBoost) cannot extrapolate beyond training range")
+
+# ----------------------------------------------------------------------------
+# DIAGNOSTIC 1: is the framework flag actually informative in each fold?
+# ----------------------------------------------------------------------------
+print("\n--- Diagnostic: framework-flag identifiability per fold ---")
+fw_diag = []
+for k in range(min_train, n):
+    fw_tr = fw_flag[:k]
+    n_post = int((fw_tr == 1).sum())
+    coef = np.nan
+    if n_post > 0 and n_post < k:
+        m_fw = LinearRegression().fit(np.column_stack([X_all[:k].flatten(), fw_tr]), y_all[:k])
+        coef = m_fw.coef_[1]
+    identified = 0 < n_post < k
+    fw_diag.append({
+        'train_size': k,
+        'test_fy': df.iloc[k]['financial_year'],
+        'post_break_points_in_train': n_post,
+        'flag_identified': identified,
+        'flag_coefficient_tonnes': round(coef, 0) if identified else None,
+    })
+    status = (f"coef={coef:,.0f} T (estimated from {n_post} post-break point(s))" if identified
+              else "flag is CONSTANT in training data -> not identified; FW model == standard LR")
+    print(f"  Fold k={k} (predict {df.iloc[k]['financial_year']}): {status}")
+n_identified = sum(r['flag_identified'] for r in fw_diag)
+print(f"  => The flag is identified in only {n_identified} of {len(fw_diag)} folds, so any FW-vs-standard "
+      f"difference comes from those folds alone.")
+pd.DataFrame(fw_diag).to_csv(os.path.join(RESULTS_DIR, 'framework_flag_diagnostic.csv'), index=False)
+pd.DataFrame(fw_diag).to_csv(os.path.join(PBI_DIR, 'framework_flag_diagnostic.csv'), index=False)
+
+# ----------------------------------------------------------------------------
+# DIAGNOSTIC 2: how fragile is the ranking? Per-fold errors and drop-one-fold MAE
+# ----------------------------------------------------------------------------
+print("\n--- Diagnostic: ranking stability (MAE with each fold dropped) ---")
+sens_rows = []
+fold_ks = list(range(min_train, n))
+for model_label, g in df_preds.groupby('model'):
+    errs = g.sort_values('train_size')['abs_error'].values
+    row = {'model': model_label, 'MAE_all_folds': round(errs.mean(), 0)}
+    for j, k in enumerate(fold_ks):
+        row[f'MAE_without_fold_{df.iloc[k]["financial_year"]}'] = round(np.delete(errs, j).mean(), 0)
+        row[f'abs_err_{df.iloc[k]["financial_year"]}'] = round(errs[j], 0)
+    sens_rows.append(row)
+df_sens = pd.DataFrame(sens_rows).sort_values('MAE_all_folds')
+drop_cols = [c for c in df_sens.columns if c.startswith('MAE_without_fold_')]
+ranks = df_sens.set_index('model')[['MAE_all_folds'] + drop_cols].rank()
+df_sens['best_rank'] = df_sens['model'].map(ranks.min(axis=1)).astype(int)
+df_sens['worst_rank'] = df_sens['model'].map(ranks.max(axis=1)).astype(int)
+df_sens.to_csv(os.path.join(RESULTS_DIR, 'fold_sensitivity.csv'), index=False)
+df_sens.to_csv(os.path.join(PBI_DIR, 'fold_sensitivity.csv'), index=False)
+print(df_sens[['model', 'MAE_all_folds', 'best_rank', 'worst_rank']].to_string(index=False))
+print("  => A wide best_rank..worst_rank span means the ranking is NOT statistically meaningful.")
+
+# ----------------------------------------------------------------------------
+# DIAGNOSTIC 3: ARIMA order / drift comparison (same rolling-origin folds)
+# ----------------------------------------------------------------------------
+print("\n--- Diagnostic: ARIMA order and drift comparison ---")
+arima_rows = []
+for order in [(0, 1, 0), (1, 1, 0), (0, 1, 1), (1, 1, 1)]:
+    for trend in ['n', 't']:
+        preds_o = [arima_forecast(y_all[:k], 1, order=order, trend=trend, context=f'order_search_k{k}')[0]
+                   for k in range(min_train, n)]
+        mae_o = mean_absolute_error(y_all[min_train:], preds_o)
+        arima_rows.append({'order': str(order), 'drift': trend == 't', 'MAE_tonnes': round(mae_o, 0),
+                           'MAPE_pct': round(calc_mape(y_all[min_train:], preds_o), 1)})
+        print(f"  ARIMA{order} drift={trend == 't'}: MAE={mae_o:,.0f} T")
+df_arima_cmp = pd.DataFrame(arima_rows).sort_values('MAE_tonnes')
+df_arima_cmp.to_csv(os.path.join(RESULTS_DIR, 'arima_order_comparison.csv'), index=False)
+df_arima_cmp.to_csv(os.path.join(PBI_DIR, 'arima_order_comparison.csv'), index=False)
+print("  Headline model stays ARIMA(1,1,0) (no drift) for continuity; this table is a sensitivity check.")
 
 # ============================================================================
 # PHASE 5: ROBUSTNESS EXPERIMENTS
@@ -569,14 +687,17 @@ print("\n--- Experiment D: Forecast Uncertainty (Gaussian Process) ---")
 gp = GaussianProcessModel()
 gp.fit(X_all.flatten(), y_all)
 future_X = np.arange(9, 15).reshape(-1, 1)
-gp_mean, gp_std = gp.predict(future_X.flatten(), return_std=True)
+# The GP works in log space: gp_mean is the median forecast and every interval bound is > 0.
+gp_mean, gp_lo, gp_hi = gp.predict_interval(future_X.flatten(), z=1.96)
+_, gp_lo68, gp_hi68 = gp.predict_interval(future_X.flatten(), z=1.0)
+# "Equivalent std" in tonnes: half-width of the 95% interval / 1.96 (intervals are asymmetric).
+gp_std = (gp_hi - gp_lo) / (2 * 1.96)
 
 future_fys = ['2025-26', '2026-27', '2027-28', '2028-29', '2029-30', '2030-31']
-print(f"  {'FY':<10} {'Mean (T)':>15} {'Std (T)':>12} {'95% CI Low':>15} {'95% CI High':>15}")
+print(f"  {'FY':<10} {'Median (T)':>15} {'Equiv Std (T)':>14} {'95% CI Low':>15} {'95% CI High':>15}")
 for i, fy in enumerate(future_fys):
-    lo = gp_mean[i] - 1.96 * gp_std[i]
-    hi = gp_mean[i] + 1.96 * gp_std[i]
-    print(f"  {fy:<10} {gp_mean[i]:>15,.0f} {gp_std[i]:>12,.0f} {lo:>15,.0f} {hi:>15,.0f}")
+    lo, hi = gp_lo[i], gp_hi[i]
+    print(f"  {fy:<10} {gp_mean[i]:>15,.0f} {gp_std[i]:>14,.0f} {lo:>15,.0f} {hi:>15,.0f}")
 
     robustness_results.append({
         'experiment': 'D_uncertainty',
@@ -621,9 +742,7 @@ future_fw = np.ones(len(future_indices))  # Future is 2022 Rules
 lr_fw_preds = lr_fw.predict(np.column_stack([future_indices, future_fw]))
 
 # 4. ARIMA
-arima_full = ARIMA(y_all, order=(1, 1, 0))
-arima_fitted = arima_full.fit()
-arima_preds = arima_fitted.forecast(steps=6)
+arima_preds = arima_forecast(y_all, 6, order=(1, 1, 0), context='final_6_step_forecast')
 
 # 5. Random Forest
 rf = RandomForestModel(use_framework_flag=True)
@@ -664,8 +783,8 @@ for i, fy in enumerate(future_fys):
             'is_forecast': True,
             'forecast_horizon_years': i + 1,
             'gp_std': round(gp_std[i], 2) if model_name == 'Gaussian Process' else None,
-            'gp_95ci_low': round(gp_preds[i] - 1.96*gp_std[i], 2) if model_name == 'Gaussian Process' else None,
-            'gp_95ci_high': round(gp_preds[i] + 1.96*gp_std[i], 2) if model_name == 'Gaussian Process' else None,
+            'gp_95ci_low': round(gp_lo[i], 2) if model_name == 'Gaussian Process' else None,
+            'gp_95ci_high': round(gp_hi[i], 2) if model_name == 'Gaussian Process' else None,
         })
 
 # Add historical actuals for Power BI
@@ -687,6 +806,50 @@ df_forecasts = pd.DataFrame(forecast_records)
 df_forecasts.to_csv(os.path.join(PBI_DIR, 'forecast_results.csv'), index=False)
 df_forecasts.to_csv(os.path.join(RESULTS_DIR, 'forecast_results.csv'), index=False)
 print(f"\nSaved: forecast_results.csv")
+
+# ----------------------------------------------------------------------------
+# SCENARIO BAND: one range instead of seven competing point forecasts
+# ----------------------------------------------------------------------------
+# RF and XGBoost are excluded: trees cannot extrapolate, so their forecast is just a
+# plateau of the recent level and adds no information about trend uncertainty.
+band_models = {
+    'Naive Baseline': naive_preds,
+    'Linear Regression': lr_preds,
+    'Linear Regression (FW)': lr_fw_preds,
+    'ARIMA(1,1,0)': np.asarray(arima_preds),
+    'Gaussian Process': gp_preds,
+}
+band_matrix = np.vstack(list(band_models.values()))
+band_names = list(band_models.keys())
+band_records = []
+for i, fy in enumerate(future_fys):
+    col = band_matrix[:, i]
+    band_records.append({
+        'financial_year': fy,
+        'fy_start': 2025 + i,
+        'low_tonnes': round(col.min(), 0),
+        'base_tonnes': round(float(np.median(col)), 0),
+        'high_tonnes': round(col.max(), 0),
+        'low_defined_by': band_names[int(col.argmin())],
+        'high_defined_by': band_names[int(col.argmax())],
+        'models_in_band': '; '.join(band_names),
+        'excluded_models': 'Random Forest; XGBoost (cannot extrapolate)',
+    })
+df_band = pd.DataFrame(band_records)
+df_band.to_csv(os.path.join(PBI_DIR, 'scenario_band.csv'), index=False)
+df_band.to_csv(os.path.join(RESULTS_DIR, 'scenario_band.csv'), index=False)
+print("\nSCENARIO BAND (min / median / max across Naive, LR, LR-FW, ARIMA, GP):")
+print(df_band[['financial_year', 'low_tonnes', 'base_tonnes', 'high_tonnes',
+               'low_defined_by', 'high_defined_by']].to_string(index=False))
+print("Saved: scenario_band.csv")
+
+# ARIMA problems must never be silent
+df_arima_diag = pd.DataFrame(ARIMA_DIAGNOSTICS, columns=['context', 'order', 'trend', 'event', 'detail'])
+df_arima_diag.to_csv(os.path.join(RESULTS_DIR, 'arima_diagnostics.csv'), index=False)
+if len(df_arima_diag):
+    print(f"\n!!! {len(df_arima_diag)} ARIMA fallback/convergence event(s) recorded — see arima_diagnostics.csv")
+else:
+    print("\nARIMA diagnostics: no fallbacks or convergence warnings (arima_diagnostics.csv is empty).")
 
 print("\n  IMPORTANT CAVEATS:")
 print("  1. All forecasts are based on only 8 historical observations")
@@ -810,9 +973,9 @@ ax.plot(df['fy_start'], df['ewaste_generated_tonnes'] / 1e6, 'ko-', label='Actua
 # GP forecast
 gp_years = [2025 + i for i in range(6)]
 ax.plot(gp_years, gp_mean / 1e6, 'r-o', label='GP Mean Forecast', markersize=6)
-ax.fill_between(gp_years, (gp_mean - 1.96*gp_std) / 1e6, (gp_mean + 1.96*gp_std) / 1e6,
-                alpha=0.2, color='red', label='95% Prediction Interval')
-ax.fill_between(gp_years, (gp_mean - gp_std) / 1e6, (gp_mean + gp_std) / 1e6,
+ax.fill_between(gp_years, gp_lo / 1e6, gp_hi / 1e6,
+                alpha=0.2, color='red', label='95% Prediction Interval (log-normal, always > 0)')
+ax.fill_between(gp_years, gp_lo68 / 1e6, gp_hi68 / 1e6,
                 alpha=0.3, color='red', label='68% Prediction Interval')
 ax.axvline(x=2022.5, color='orange', linestyle=':', alpha=0.5, label='Methodology break')
 ax.set_xlabel('Year')
@@ -838,6 +1001,24 @@ if len(ltd_data) > 0:
     plt.savefig(os.path.join(FIGURES_DIR, 'fig6_training_size.png'), dpi=150)
     plt.close()
     print("  Saved: fig6_training_size.png")
+
+# Figure 7: Scenario band (the headline forecast presentation)
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(df['fy_start'], df['ewaste_generated_tonnes'] / 1e6, 'ko-', label='Actual', markersize=8, linewidth=2)
+ax.fill_between(df_band['fy_start'], df_band['low_tonnes'] / 1e6, df_band['high_tonnes'] / 1e6,
+                alpha=0.25, color='tab:blue', label='Scenario range (min–max of 5 extrapolating models)')
+ax.plot(df_band['fy_start'], df_band['base_tonnes'] / 1e6, 'b-o', label='Median of models', markersize=5)
+ax.axvline(x=2022.5, color='orange', linestyle=':', alpha=0.6, label='Methodology break')
+ax.set_xlabel('Financial Year Start')
+ax.set_ylabel('E-Waste Generated (Million Tonnes)')
+ax.set_title('Forecast Scenario Range, FY 2025–26 to 2030–31\n'
+             'Based on 8 observations and one reporting-framework break: a range, not a prediction')
+ax.legend(loc='upper left', fontsize=9)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(os.path.join(FIGURES_DIR, 'fig7_scenario_band.png'), dpi=150)
+plt.close()
+print("  Saved: fig7_scenario_band.png")
 
 print("\n" + "=" * 80)
 print("ALL PHASES COMPLETE")

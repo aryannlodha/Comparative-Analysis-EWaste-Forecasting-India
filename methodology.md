@@ -60,29 +60,31 @@ Two variants are specified via Ordinary Least Squares (OLS):
 ### Model 3: Autoregressive Integrated Moving Average — ARIMA(1, 1, 0)
 First-difference autoregressive formulation:
 $$(1 - \phi_1 B)(1 - B) y_t = \epsilon_t \implies \Delta y_t = \phi_1 \Delta y_{t-1} + \epsilon_t$$
-Parameters are estimated via Maximum Likelihood on the differenced stationary series.
+Parameters are estimated via Maximum Likelihood on the differenced stationary series. With $d=1$ and no drift term the forecast is nearly flat, so this model behaves like the naive baseline; `arima_order_comparison.csv` checks other orders and drift. Any fit failure falls back to the naive value **and is logged** (`arima_diagnostics.csv`).
 
 ### Model 4: Random Forest Regressor
-Ensemble of shallow bagged decision trees ($B = 50$, $\text{max\_depth} = 2$, $\text{min\_samples\_split} = 3$):
+Ensemble of shallow bagged decision trees ($B = 50$, $\text{max\_depth} = 2$, $\text{min\_samples\_split} = 3$). Hyperparameters are hand-set and deliberately very conservative (shallow trees, large leaves) because with 4–7 training points any deeper tree memorizes the data; they were **not** tuned on the test folds. Trees predict piecewise-constant values, so they cannot extrapolate a trend:
 $$\hat{y}(x) = \frac{1}{B} \sum_{b=1}^B T_b(x)$$
 Regularized to mitigate extreme overfitting on $n=8$.
 
 ### Model 5: XGBoost Regressor
 Gradient-boosted decision trees minimizing regularized objective:
 $$\mathcal{L} = \sum_{i} l(y_i, \hat{y}_i) + \sum_k \left( \gamma T + \frac{1}{2} \lambda \|w\|^2 + \alpha |w| \right)$$
-Configured with $L_1$ ($\alpha=1.0$) and $L_2$ ($\lambda=1.0$) penalties to prevent tree memorization.
+Configured with $L_1$ ($\alpha=1.0$) and $L_2$ ($\lambda=1.0$) penalties, `max_depth=2` and `min_child_weight=3` to prevent tree memorization. As with Random Forest, hyperparameters are hand-set for the tiny sample, not tuned, and the forecast plateaus outside the training range.
 
 ### Model 6: Gaussian Process Regression (GPR)
 Bayesian nonparametric prior over functions:
 $$f(x) \sim \mathcal{GP}\left(m(x), k(x, x')\right)$$
 with a composite kernel consisting of a Constant Kernel, Radial Basis Function (RBF), and White Noise Kernel:
 $$k(x, x') = \sigma_f^2 \exp\left(-\frac{(x - x')^2}{2 l^2}\right) + \sigma_n^2 \delta_{x, x'}$$
-The predictive distribution at test input $x_*$ is Gaussian:
+The target is first transformed to standardized $\log(\text{tonnes})$, so the kernel hyperparameters are on an $O(1)$ scale and forecasts/intervals are strictly positive after back-transformation (median forecast, log-normal intervals). In log space the predictive distribution at test input $x_*$ is Gaussian:
 $$y_* \mid X, y, x_* \sim \mathcal{N}(\mu_*, \sigma_*^2)$$
 
 ---
 
 ## 4. Evaluation Strategy: Rolling-Origin Backtesting
+
+> **Interpretation limits.** Each model is scored on only 4 one-step-ahead points, one of which (FY 2023–24) straddles the reporting-framework break. Rankings are unstable (see `fold_sensitivity.csv`), and the framework-flag model is identifiable in only the final fold (`framework_flag_diagnostic.csv`). Differences between the top models should not be read as evidence that one is better.
 
 Because standard $k$-fold cross-validation and random train/test splits destroy temporal ordering and cause lookahead leakage, we implement **chronological rolling-origin evaluation** across 4 expanding windows:
 

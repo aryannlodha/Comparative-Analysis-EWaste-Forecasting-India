@@ -19,7 +19,10 @@ This repository hosts the data science and predictive modeling pipeline for fore
 
 ## Visual Highlights
 
-### 1. Multi-Model Forecast Trajectories Through FY 2030–31
+### 1. Headline Forecast: Scenario Range Through FY 2030–31
+![Scenario Band](outputs/figures/fig7_scenario_band.png)
+
+### 1b. Individual Model Trajectories (diagnostic view)
 ![Forecast Comparison](outputs/figures/fig2_forecast_comparison.png)
 
 ### 2. Historical Baseline & Regulatory Framework Transition
@@ -36,29 +39,52 @@ This repository hosts the data science and predictive modeling pipeline for fore
 ## Key Research Findings & Contributions
 
 1. **Statutory Structural Break Discovery:** The official historical series contains an apparent discontinuity between FY 2022–23 ($1.61\text{ M MT}$ under the 2016 Rules / 21 EEE categories) and FY 2023–24 ($1.25\text{ M MT}$ under the 2022 Rules / 106 categories on registered-producer portal data). The framework change limits comparisons of physical volumes across those years. CPCB continued to use producer sales and equipment lifetimes to estimate generation. [MoEFCC parliamentary reply](https://www.pib.gov.in/PressReleasePage.aspx?PRID=2147876)
-2. **Empirical Evaluation Under Data Scarcity ($n=8$):** In chronological backtesting across 4 expanding origins, simpler autoregressive and baseline formulations outperformed complex models:
+2. **Empirical Evaluation Under Data Scarcity ($n=8$):** In chronological backtesting across 4 expanding origins (4 test points per model), the naive baseline had the lowest error. **The ranking below is not statistically reliable**: dropping a single fold moves most models by several rank positions (see `outputs/model_results/fold_sensitivity.csv`; e.g. Gaussian Process ranks anywhere from 1st to 5th, XGBoost 5th to 7th). Treat the top four as indistinguishable.
    - **Naive Baseline:** $\text{MAE} = 190,280\text{ MT}$ ($13.7\%\text{ MAPE}$)
-   - **ARIMA(1,1,0):** $\text{MAE} = 214,388\text{ MT}$ ($15.5\%\text{ MAPE}$) — *Lowest MAE among fitted models in these four folds*
-   - **Linear Regression (Framework-Adjusted):** $\text{MAE} = 251,994\text{ MT}$ ($18.7\%\text{ MAPE}$) — *Its 21.7% MAE improvement over standard linear regression came entirely from the final fold*
-   - **Gaussian Process:** $\text{MAE} = 236,555\text{ MT}$ ($16.8\%\text{ MAPE}$)
+   - **ARIMA(1,1,0):** $\text{MAE} = 214,388\text{ MT}$ ($15.5\%\text{ MAPE}$) — *near-flat forecast (no drift), so it behaves almost like the naive baseline*
+   - **Gaussian Process (log-space):** $\text{MAE} = 217,264\text{ MT}$ ($15.7\%\text{ MAPE}$)
+   - **Linear Regression (Framework-Adjusted):** $\text{MAE} = 251,994\text{ MT}$ ($18.7\%\text{ MAPE}$) — *this is **not** a demonstrated modelling improvement: the framework flag is constant (all zeros) in the training data of folds 1–3, so the model is identical to standard linear regression there. Its 21.7% MAE gain over standard linear regression comes entirely from the final fold, where the flag is estimated from a single post-break point (`framework_flag_diagnostic.csv`).*
    - **Linear Regression (Standard):** $\text{MAE} = 322,003\text{ MT}$ ($23.7\%\text{ MAPE}$)
    - **Random Forest:** $\text{MAE} = 323,631\text{ MT}$ ($21.2\%\text{ MAPE}$)
    - **XGBoost:** $\text{MAE} = 361,350\text{ MT}$ ($23.6\%\text{ MAPE}$)
-3. **Machine Learning Extrapolation Boundary:** Tree ensembles (Random Forest, XGBoost) lack natural extrapolation ability on univariate time indexes, producing constant forecasts (~$1.43\text{ M MT}$) beyond 2025. Framework-adjusted linear regression projects **2.67 million tonnes** in FY 2030–31 if its fitted slope and the newer reporting framework persist.
-4. **Bayesian Uncertainty Divergence:** Gaussian process predictive standard deviation rises from 238,196 tonnes in FY 2025–26 to 740,679 tonnes in FY 2030–31, a 210.9% increase. These model-implied bands have untested coverage.
+3. **Machine Learning Extrapolation Boundary:** Tree ensembles (Random Forest, XGBoost) cannot extrapolate beyond the training range, so they return a constant plateau (~$1.43\text{ M MT}$) after 2025. This is expected behaviour, not evidence about future trend, and these models are therefore excluded from the scenario range. The framework-adjusted linear model's 2.67 million tonnes for FY 2030–31 is the *upper end* of the range and depends on a flag coefficient estimated from only two post-break observations.
+4. **Forecast Uncertainty:** The Gaussian process is fitted to standardized log(tonnes), so its median forecast and every interval bound are strictly positive. Its 95% interval for FY 2030–31 is 621,766 – 2,211,193 tonnes. The equivalent standard deviation (half-width of the 95% interval / 1.96) grows from about 211,000 tonnes in FY 2025–26 to about 405,000 in FY 2030–31 (+92%). These model-implied bands have untested coverage. *(An earlier version of this project fitted the GP on raw tonnes, which produced a negative lower bound of −1.22 M tonnes and a falling mean of 229,283 tonnes by FY 2030–31; that was an artefact of the unscaled kernel.)*
 
 ---
 
-## Multi-Model Forecasts Through FY 2030–31
+## Forecasts Through FY 2030–31
 
-| Financial Year | Naive Baseline | Linear Reg (Std) | Linear Reg (FW) | ARIMA(1,1,0) | Random Forest | XGBoost | Gaussian Process | GP nominal 95% prediction interval |
+**Read this as a range, not a prediction.** With 8 observations and a reporting-framework break inside the series, the models cannot be ranked and their long-horizon forecasts disagree widely. The scenario range below is the minimum, median and maximum across the five models that can extrapolate (Naive, Linear Regression, Linear Regression (FW), ARIMA(1,1,0), Gaussian Process). Source: `outputs/model_results/scenario_band.csv`.
+
+| Financial Year | Low | Median of models | High | Low set by | High set by |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| **2025–26** | 1,397,956 MT | 1,426,696 MT | 1,710,046 MT | Naive | Linear Reg (Std) |
+| **2026–27** | 1,397,956 MT | 1,432,446 MT | 1,844,759 MT | Naive | Linear Reg (FW) |
+| **2027–28** | 1,344,182 MT | 1,433,596 MT | 2,052,214 MT | Gaussian Process | Linear Reg (FW) |
+| **2028–29** | 1,252,429 MT | 1,433,826 MT | 2,259,669 MT | Gaussian Process | Linear Reg (FW) |
+| **2029–30** | 1,195,686 MT | 1,433,872 MT | 2,467,124 MT | Gaussian Process | Linear Reg (FW) |
+| **2030–31** | 1,172,537 MT | 1,433,882 MT | 2,674,580 MT | Gaussian Process | Linear Reg (FW) |
+
+<details>
+<summary>Individual model point forecasts (diagnostic detail)</summary>
+
+| Financial Year | Naive Baseline | Linear Reg (Std) | Linear Reg (FW) | ARIMA(1,1,0) | Random Forest | XGBoost | Gaussian Process (median) | GP 95% prediction interval |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **2025–26** | 1,397,956 MT | 1,710,046 MT | 1,637,304 MT | 1,426,696 MT | 1,424,710 MT | 1,438,663 MT | 1,163,634 MT | $[696,769 \text{ to } 1,630,498]$ |
-| **2026–27** | 1,397,956 MT | 1,820,511 MT | 1,844,759 MT | 1,432,446 MT | 1,424,710 MT | 1,438,663 MT | 952,273 MT | $[320,643 \text{ to } 1,583,903]$ |
-| **2027–28** | 1,397,956 MT | 1,930,976 MT | 2,052,214 MT | 1,433,596 MT | 1,424,710 MT | 1,438,663 MT | 734,458 MT | $[-103,927 \text{ to } 1,572,842]$ |
-| **2028–29** | 1,397,956 MT | 2,041,441 MT | 2,259,669 MT | 1,433,826 MT | 1,424,710 MT | 1,438,663 MT | 532,735 MT | $[-526,382 \text{ to } 1,591,853]$ |
-| **2029–30** | 1,397,956 MT | 2,151,906 MT | 2,467,124 MT | 1,433,872 MT | 1,424,710 MT | 1,438,663 MT | 362,104 MT | $[-907,306 \text{ to } 1,631,515]$ |
-| **2030–31** | 1,397,956 MT | 2,262,371 MT | **2,674,580 MT** | 1,433,882 MT | 1,424,710 MT | 1,438,663 MT | 229,283 MT | $[-1,222,447 \text{ to } 1,681,013]$ |
+| **2025–26** | 1,397,956 MT | 1,710,046 MT | 1,637,304 MT | 1,426,696 MT | 1,424,710 MT | 1,438,663 MT | 1,400,516 MT | $[1,046,199 \text{ to } 1,874,829]$ |
+| **2026–27** | 1,397,956 MT | 1,820,511 MT | 1,844,759 MT | 1,432,446 MT | 1,424,710 MT | 1,438,663 MT | 1,418,246 MT | $[888,305 \text{ to } 2,264,339]$ |
+| **2027–28** | 1,397,956 MT | 1,930,976 MT | 2,052,214 MT | 1,433,596 MT | 1,424,710 MT | 1,438,663 MT | 1,344,182 MT | $[750,908 \text{ to } 2,406,185]$ |
+| **2028–29** | 1,397,956 MT | 2,041,441 MT | 2,259,669 MT | 1,433,826 MT | 1,424,710 MT | 1,438,663 MT | 1,252,429 MT | $[670,747 \text{ to } 2,338,553]$ |
+| **2029–30** | 1,397,956 MT | 2,151,906 MT | 2,467,124 MT | 1,433,872 MT | 1,424,710 MT | 1,438,663 MT | 1,195,686 MT | $[634,704 \text{ to } 2,252,490]$ |
+| **2030–31** | 1,397,956 MT | 2,262,371 MT | 2,674,580 MT | 1,433,882 MT | 1,424,710 MT | 1,438,663 MT | 1,172,537 MT | $[621,766 \text{ to } 2,211,193]$ |
+
+</details>
+
+### Additional diagnostics written by `03_train_evaluate_forecast.py` (`outputs/model_results/`)
+- `fold_sensitivity.csv` — per-fold errors, MAE with each fold dropped, and best/worst rank per model.
+- `framework_flag_diagnostic.csv` — whether the framework flag is identifiable in each backtest fold.
+- `arima_order_comparison.csv` — ARIMA orders (0/1,1,0/1) with and without drift on the same folds. ARIMA(1,1,1) scores lower MAE (172,843; 138,185 with drift) but its fits emit convergence warnings and it was picked from 8 candidates using only 4 test points, so it is reported as a sensitivity check and is **not** adopted as the headline model.
+- `arima_diagnostics.csv` — every ARIMA fallback-to-naive or convergence event (ARIMA failures are no longer silent).
+- `scenario_band.csv` — the range table above.
 
 ---
 
@@ -135,7 +161,7 @@ published results and reruns the pipeline on pull requests and pushes to `main`.
 - Python 3.10+ (Tested on Python 3.11)
 - Install required packages:
   ```bash
-  pip install -r requirements.txt
+  pip install -r requirements.txt        # or requirements-lock.txt for the exact versions the results were verified with
   ```
 
 ### 2. Run the Complete End-to-End Pipeline
